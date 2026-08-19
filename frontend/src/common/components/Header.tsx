@@ -7,12 +7,14 @@ import { BrandLogo } from "@/common/components/BrandLogo";
 import { DummyLink } from "@/common/components/DummyLink";
 import { ChevronDownIcon, MenuIcon, SearchIcon, UserIcon } from "@/common/components/Icons";
 import { useAuth } from "@/features/auth/store/auth-context";
+import { useCity } from "@/features/city/store/city-context";
 
 const PRIMARY = ["Stream", "Events", "Plays", "Sports", "Activities"];
 const UTILITY = ["ListYourShow", "Corporates", "Offers", "Gift Cards"];
 
 export function Header() {
   const { user, ready, logout } = useAuth();
+  const { city, openPicker } = useCity();
   const pathname = usePathname();
 
   if (pathname.startsWith("/booking") || pathname.startsWith("/payment")) {
@@ -34,9 +36,13 @@ export function Header() {
           />
         </div>
         <div className="ml-auto flex items-center gap-4 text-[13px] text-[#333]">
-          <DummyLink className="hidden items-center gap-1 sm:inline-flex">
-            Bengaluru <ChevronDownIcon className="text-[#666]" />
-          </DummyLink>
+          <button
+            type="button"
+            onClick={openPicker}
+            className="hidden items-center gap-1 hover:text-[#f84464] sm:inline-flex"
+          >
+            {city ?? "Select city"} <ChevronDownIcon className="text-[#666]" />
+          </button>
           {ready && user ? (
             <>
               <Link href="/my-bookings" className="inline-flex items-center gap-1 hover:text-[#f84464]">

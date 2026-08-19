@@ -30,3 +30,13 @@ class CinemaOut(BaseModel):
 
 class CinemaListOut(BaseModel):
     items: List[CinemaOut]
+
+
+class CityOut(BaseModel):
+    name: str
+    cinema_count: int
+    is_popular: bool = False
+
+
+class CityListOut(BaseModel):
+    items: List[CityOut]

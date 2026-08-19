@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.database import close_db, connect_db, get_database
 from app.features.auth.router import router as auth_router
 from app.features.booking.router import router as booking_router
+from app.features.cinemas.router import cities_router
 from app.features.cinemas.router import router as cinemas_router
 from app.features.movies.router import router as movies_router
 from app.features.payment.router import router as payment_router
@@ -29,6 +30,7 @@ register_exception_handlers(app)
 app.include_router(auth_router)
 app.include_router(movies_router)
 app.include_router(cinemas_router)
+app.include_router(cities_router)
 app.include_router(shows_router)
 app.include_router(seats_router)
 app.include_router(booking_router)

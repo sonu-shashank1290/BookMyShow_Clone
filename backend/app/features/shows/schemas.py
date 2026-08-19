@@ -7,6 +7,8 @@ class ShowtimeOut(BaseModel):
     show_id: str
     start_time: str
     end_time: str
+    language: Optional[str] = None
+    format: Optional[str] = None
     price_tiers: Dict[str, int]
 
 
@@ -29,6 +31,8 @@ class ShowListOut(BaseModel):
     movie_id: str
     date: str
     cinemas: List[CinemaShowtimesOut]
+    languages: List[str] = []
+    formats: List[str] = []
 
 
 class ShowOut(BaseModel):
@@ -39,6 +43,9 @@ class ShowOut(BaseModel):
     date: str
     start_time: str
     end_time: str
+    city: Optional[str] = None
+    language: Optional[str] = None
+    format: Optional[str] = None
     price_tiers: Dict[str, int]
     booked_seats: List[str]
     movie_title: Optional[str] = None

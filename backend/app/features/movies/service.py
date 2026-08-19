@@ -14,12 +14,19 @@ async def list_movies(
     pagination: PaginationParams,
     language: Optional[str] = None,
     genre: Optional[str] = None,
+    city: Optional[str] = None,
+    premiere: Optional[bool] = None,
 ) -> dict:
     query = {"is_active": True}
     if language:
         query["language"] = language
     if genre:
         query["genre"] = genre
+    if premiere is not None:
+        query["is_premiere"] = premiere
+    if city:
+        # Only surface movies that are actually screening in the chosen city.
+        query["_id"] = {"$in": await db.shows.distinct("movie_id", {"city": city})}
 
     total = await db.movies.count_documents(query)
     cursor = (

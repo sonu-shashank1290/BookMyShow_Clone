@@ -63,7 +63,9 @@ export function SeatMap({ showId }: { showId: string }) {
     const nextMap = await getSeatMap(showId, token);
     setShow(nextShow);
     setMap(nextMap);
-    const listed = await listShows(nextShow.movie_id, nextShow.date);
+    const listed = await listShows(nextShow.movie_id, nextShow.date, {
+      city: nextShow.city ?? undefined,
+    });
     const cinema = listed.cinemas.find((item) => item.cinema_id === nextShow.cinema_id);
     setSiblings(cinema ? cinema.screens.flatMap((screen) => screen.showtimes) : []);
   }

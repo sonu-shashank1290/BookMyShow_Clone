@@ -42,6 +42,8 @@ async def ensure_indexes() -> None:
         unique=True,
     )
     await db.shows.create_index([("movie_id", 1), ("cinema_id", 1), ("date", 1)])
+    # The showtimes page always filters by movie + city + date first.
+    await db.shows.create_index([("movie_id", 1), ("city", 1), ("date", 1)])
     await db.cinemas.create_index("city")
     await db.movies.create_index("language")
     await db.movies.create_index("genre")

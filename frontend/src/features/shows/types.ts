@@ -2,6 +2,8 @@ export type Showtime = {
   show_id: string;
   start_time: string;
   end_time: string;
+  language?: string | null;
+  format?: string | null;
   price_tiers: Record<string, number>;
 };
 
@@ -24,6 +26,8 @@ export type ShowList = {
   movie_id: string;
   date: string;
   cinemas: CinemaShowtimes[];
+  languages: string[];
+  formats: string[];
 };
 
 export type Show = {
@@ -34,6 +38,9 @@ export type Show = {
   date: string;
   start_time: string;
   end_time: string;
+  city?: string | null;
+  language?: string | null;
+  format?: string | null;
   price_tiers: Record<string, number>;
   booked_seats: string[];
   movie_title?: string | null;

@@ -67,7 +67,7 @@ BookMyShow_Clone/
 │       └── features/
 │           ├── auth/                # router, schemas, service, models
 │           ├── movies/
-│           ├── cinemas/             # cinemas + screens + seat_layout
+│           ├── cinemas/             # cinemas + screens + seat_layout + /cities
 │           ├── shows/               # movie x screen x date x time
 │           ├── seats/               # router, schemas, service, locks.py
 │           ├── booking/
@@ -92,6 +92,7 @@ BookMyShow_Clone/
         │   └── lib/                          # api.ts (fetch client), dates.ts
         └── features/
             ├── auth/       api/, components/AuthForm, store/auth-context
+            ├── city/       api/, components/CityModal + CityIcon, lib/geo, store/city-context
             ├── movies/     api/, components/MovieGrid, MovieCard, LanguageFormatModal, types
             ├── shows/      api/, components/MovieShowtimes, DateStrip, ShowtimeGrid, types
             ├── seats/      api/, components/SeatMap, SeatCountModal, lib/continuous, types
@@ -168,12 +169,18 @@ furniture — it never records availability.
 ```json
 {
   "_id": ObjectId, "movie_id": ObjectId, "cinema_id": ObjectId, "screen_id": ObjectId,
+  "city": "Hyderabad", "language": "Telugu", "format": "2D",
   "date": "2026-08-20", "start_time": "19:30", "end_time": "22:00",
   "price_tiers": { "classic": 199, "prime": 199, "recliner": 399 },
   "booked_seats": ["A1", "A2", "F5"]
 }
 ```
 `booked_seats` is written **only** after a successful payment.
+
+`language` and `format` live on the show, not the movie: one film screens in Telugu
+2D at 10:15 and Hindi IMAX at 13:45, and those are different shows. `city` is
+denormalised from the cinema so the showtimes query stays a single-collection read —
+a show never changes venue, so the copy cannot drift.
 
 **`bookings`**
 ```json
@@ -195,7 +202,8 @@ furniture — it never records availability.
 |-------|------|---------|
 | `users.email` | unique | one account per email |
 | `shows (screen_id, date, start_time)` | unique compound | no two films in one hall at one time |
-| `shows (movie_id, cinema_id, date)` | lookup | the showtime query |
+| `shows (movie_id, cinema_id, date)` | lookup | showtimes for one cinema |
+| `shows (movie_id, city, date)` | lookup | the showtime query the UI actually makes |
 | `cinemas.city` | lookup | city filter |
 | `movies.language`, `movies.genre` | lookup | catalog filters |
 
@@ -221,11 +229,21 @@ running multiple workers would not share them. See section 10.
 ## 5. Core Flows
 
 ### 5.1 Browse → Select Date → Select Showtime
-1. `GET /movies` → paginated list, optional `language` / `genre` filters.
+0. `GET /cities` → the cities that have cinemas, popular ones first in a curated order
+   (`POPULAR_CITIES` in the cinemas service — merchandising, not something to derive from
+   cinema counts). The chosen city lives in a React context backed by `localStorage`
+   (`bms_city`) and is threaded into every catalogue call below, so switching city changes
+   what the whole app shows. "Detect my location" snaps the browser coordinate to the
+   nearest city in `features/city/lib/geo.ts` — no geocoding service involved.
+1. `GET /movies?city=&premiere=` → paginated list. `city` keeps the grid to films that
+   actually have shows there; `premiere` splits the home page's two rows into disjoint sets.
 2. `GET /movies/{movie_id}?city=` → details plus `cinemas`, derived from `shows.distinct("cinema_id")`.
-3. `GET /shows?movie_id=&date=&cinema_id=` → showtimes grouped **cinema → screen → showtimes**
-   for the selected date. The frontend renders a 7-day date strip; changing the date re-queries
-   for that date only. That is what keeps "same movie, different date" a different show.
+3. `GET /shows?movie_id=&date=&city=&language=&format=` → showtimes grouped
+   **cinema → screen → showtimes** for the selected date, plus the `languages` and `formats`
+   available that day so the UI can render real filter chips. Those options are computed
+   before the language/format filter is applied, so the chips never vanish once you pick one.
+   The frontend renders a 7-day date strip; changing the date re-queries for that date only.
+   That is what keeps "same movie, different date" a different show.
 4. Selecting a showtime navigates to `/booking/[showId]/seats`, scoped entirely by `show_id`.
 
 ### 5.2 Seat Selection & Locking
@@ -282,11 +300,12 @@ running multiple workers would not share them. See section 10.
 | POST | `/auth/signup` | — | Create account, returns JWT |
 | POST | `/auth/login` | — | Returns JWT |
 | GET | `/auth/me` | JWT | Current user |
-| GET | `/movies?language=&genre=&page=&page_size=` | — | List/filter movies |
+| GET | `/movies?language=&genre=&city=&premiere=&page=&page_size=` | — | List/filter movies |
 | GET | `/movies/{id}?city=` | — | Details + cinemas playing it |
+| GET | `/cities` | — | Cities that have cinemas, with counts |
 | GET | `/cinemas?city=` | — | List cinemas |
 | GET | `/cinemas/{id}` | — | Cinema + screens + seat_layout |
-| GET | `/shows?movie_id=&date=&cinema_id=` | — | Showtimes grouped by cinema/screen |
+| GET | `/shows?movie_id=&date=&cinema_id=&city=&language=&format=` | — | Showtimes grouped by cinema/screen |
 | GET | `/shows/{show_id}` | — | One show, with movie/cinema/screen names |
 | GET | `/shows/{show_id}/seats` | optional | Seat map + status |
 | POST | `/seats/lock` | JWT | Hold a seat (TTL 600s) |
@@ -317,6 +336,9 @@ running multiple workers would not share them. See section 10.
   context, modals. Everything else stays a server component.
 - Frontend types in `features/*/types.ts` mirror backend Pydantic schemas field for field.
 - JWT is stored in `localStorage` under `bms_token` and rehydrated via `GET /auth/me`.
+- The selected city is stored in `localStorage` under `bms_city`. `useCity()` returns
+  `city: null` until that read happens on the client, and catalogue components skip
+  fetching while it is null — that avoids a wasted request against the wrong city.
 
 ---
 

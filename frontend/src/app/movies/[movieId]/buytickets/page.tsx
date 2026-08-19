@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 import { formatDuration } from "@/common/lib/dates";
+import { useCity } from "@/features/city/store/city-context";
 import { getMovie } from "@/features/movies/api/movies";
 import type { Movie } from "@/features/movies/types";
 import { MovieShowtimes } from "@/features/shows/components/MovieShowtimes";
@@ -11,13 +12,15 @@ import { MovieShowtimes } from "@/features/shows/components/MovieShowtimes";
 function BuyTicketsPageInner() {
   const params = useParams<{ movieId: string }>();
   const searchParams = useSearchParams();
+  const { city } = useCity();
   const [movie, setMovie] = useState<Movie | null>(null);
   const language = searchParams.get("language");
   const format = searchParams.get("format");
 
   useEffect(() => {
-    getMovie(params.movieId).then(setMovie).catch(() => setMovie(null));
-  }, [params.movieId]);
+    if (!city) return;
+    getMovie(params.movieId, city).then(setMovie).catch(() => setMovie(null));
+  }, [params.movieId, city]);
 
   const tags = movie
     ? [
@@ -52,7 +55,11 @@ function BuyTicketsPageInner() {
         </div>
       </div>
       <div className="mx-auto max-w-[1240px] px-6 py-4">
-        <MovieShowtimes movieId={params.movieId} />
+        <MovieShowtimes
+          movieId={params.movieId}
+          initialLanguage={language ?? undefined}
+          initialFormat={format ?? undefined}
+        />
       </div>
     </main>
   );

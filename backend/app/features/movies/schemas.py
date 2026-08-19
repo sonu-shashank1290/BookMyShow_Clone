@@ -33,6 +33,7 @@ class MovieOut(BaseModel):
     language_formats: Dict[str, List[str]] = {}
     cast: List[PersonOut] = []
     crew: List[PersonOut] = []
+    is_premiere: bool = False
     is_active: bool = True
     cinemas: Optional[List[MovieCinemaOut]] = None
 

@@ -17,6 +17,9 @@ def show_public(
         "date": doc["date"],
         "start_time": doc["start_time"],
         "end_time": doc["end_time"],
+        "city": doc.get("city"),
+        "language": doc.get("language"),
+        "format": doc.get("format"),
         "price_tiers": doc.get("price_tiers", {}),
         "booked_seats": doc.get("booked_seats", []),
     }

@@ -13,17 +13,43 @@ async def list_shows(
     movie_id: str,
     show_date: str,
     cinema_id: Optional[str] = None,
+    city: Optional[str] = None,
+    language: Optional[str] = None,
+    fmt: Optional[str] = None,
 ) -> dict:
-    query = {
+    base_query = {
         "movie_id": to_object_id(movie_id),
         "date": show_date,
     }
     if cinema_id:
-        query["cinema_id"] = to_object_id(cinema_id)
+        base_query["cinema_id"] = to_object_id(cinema_id)
+    if city:
+        base_query["city"] = city
 
+    # Options come from the unfiltered day so the chips never disappear once a
+    # filter is applied.
+    languages = sorted(
+        value for value in await db.shows.distinct("language", base_query) if value
+    )
+    formats = sorted(
+        value for value in await db.shows.distinct("format", base_query) if value
+    )
+
+    query = dict(base_query)
+    if language:
+        query["language"] = language
+    if fmt:
+        query["format"] = fmt
+
+    options = {"languages": languages, "formats": formats}
     shows = [doc async for doc in db.shows.find(query).sort("start_time", 1)]
     if not shows:
-        return {"movie_id": movie_id, "date": show_date, "cinemas": []}
+        return {
+            "movie_id": movie_id,
+            "date": show_date,
+            "cinemas": [],
+            **options,
+        }
 
     cinema_ids = list({doc["cinema_id"] for doc in shows})
     screen_ids = list({doc["screen_id"] for doc in shows})
@@ -43,6 +69,8 @@ async def list_shows(
                 "show_id": str(doc["_id"]),
                 "start_time": doc["start_time"],
                 "end_time": doc["end_time"],
+                "language": doc.get("language"),
+                "format": doc.get("format"),
                 "price_tiers": doc.get("price_tiers", {}),
             }
         )
@@ -75,7 +103,12 @@ async def list_shows(
             }
         )
     cinema_payloads.sort(key=lambda item: item["cinema_name"])
-    return {"movie_id": movie_id, "date": show_date, "cinemas": cinema_payloads}
+    return {
+        "movie_id": movie_id,
+        "date": show_date,
+        "cinemas": cinema_payloads,
+        **options,
+    }
 
 
 async def get_show(db: AsyncIOMotorDatabase, show_id: str) -> dict:

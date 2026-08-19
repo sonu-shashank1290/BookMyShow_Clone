@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { DummyLink } from "@/common/components/DummyLink";
 import { PlayIcon, ShareIcon, StarIcon } from "@/common/components/Icons";
 import { formatDuration, formatRelease, formatVotes } from "@/common/lib/dates";
+import { useCity } from "@/features/city/store/city-context";
 import { getMovie } from "@/features/movies/api/movies";
 import { LanguageFormatModal } from "@/features/movies/components/LanguageFormatModal";
 import { MovieGrid } from "@/features/movies/components/MovieGrid";
@@ -24,15 +25,17 @@ const OFFERS = [
 
 export default function MovieDetailPage() {
   const params = useParams<{ movieId: string }>();
+  const { city } = useCity();
   const [movie, setMovie] = useState<Movie | null>(null);
   const [error, setError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
-    getMovie(params.movieId)
+    if (!city) return;
+    getMovie(params.movieId, city)
       .then(setMovie)
       .catch(() => setError("Movie not found"));
-  }, [params.movieId]);
+  }, [params.movieId, city]);
 
   if (error) {
     return <main className="mx-auto max-w-[1240px] px-6 py-10 text-red-500">{error}</main>;

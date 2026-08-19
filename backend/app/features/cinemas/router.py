@@ -5,9 +5,15 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.deps import get_db
 from app.features.cinemas import service
-from app.features.cinemas.schemas import CinemaListOut, CinemaOut
+from app.features.cinemas.schemas import CinemaListOut, CinemaOut, CityListOut
 
 router = APIRouter(prefix="/cinemas", tags=["cinemas"])
+cities_router = APIRouter(prefix="/cities", tags=["cinemas"])
+
+
+@cities_router.get("", response_model=CityListOut)
+async def list_cities(db: AsyncIOMotorDatabase = Depends(get_db)) -> dict:
+    return await service.list_cities(db)
 
 
 @router.get("", response_model=CinemaListOut, response_model_exclude_none=True)

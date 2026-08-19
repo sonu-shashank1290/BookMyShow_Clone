@@ -20,7 +20,7 @@ export default function Home() {
           <h1 className="text-[24px] font-bold text-[#333]">Recommended Movies</h1>
           <DummyLink className="text-[14px] text-[#f84464]">See All ›</DummyLink>
         </div>
-        <MovieGrid />
+        <MovieGrid premiere={false} />
       </section>
 
       <section className="mx-auto w-full max-w-[1240px] px-6 pb-8">

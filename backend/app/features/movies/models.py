@@ -27,6 +27,7 @@ def movie_public(doc: dict[str, Any]) -> dict[str, Any]:
         "language_formats": doc.get("language_formats") or {},
         "cast": doc.get("cast") or [],
         "crew": doc.get("crew") or [],
+        "is_premiere": bool(doc.get("is_premiere")),
         "is_active": doc.get("is_active", True),
     }
 

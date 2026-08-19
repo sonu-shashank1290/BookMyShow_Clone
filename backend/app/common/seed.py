@@ -1,7 +1,9 @@
+import hashlib
 from datetime import date, datetime, timedelta
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import UpdateOne
 
 # Stable ids so later show seeding can reference the same screens/movies.
 MOVIE_INTERSTELLAR = ObjectId("64a000000000000000000001")
@@ -23,6 +25,15 @@ CINEMA_INOX = ObjectId("64b000000000000000000002")
 CINEMA_NEXUS = ObjectId("64b000000000000000000003")
 CINEMA_CINEPOLIS = ObjectId("64b000000000000000000004")
 CINEMA_ORION = ObjectId("64b000000000000000000005")
+CINEMA_AMB = ObjectId("64b000000000000000000006")
+CINEMA_ICON_HYD = ObjectId("64b000000000000000000007")
+CINEMA_GVK = ObjectId("64b000000000000000000008")
+CINEMA_INFINITI = ObjectId("64b000000000000000000009")
+CINEMA_NARIMAN = ObjectId("64b00000000000000000000a")
+CINEMA_CINEPOLIS_MUM = ObjectId("64b00000000000000000000b")
+CINEMA_SAKET = ObjectId("64b00000000000000000000c")
+CINEMA_NEHRU = ObjectId("64b00000000000000000000d")
+CINEMA_PRIYA = ObjectId("64b00000000000000000000e")
 
 SCREEN_PVR_1 = ObjectId("64c000000000000000000001")
 SCREEN_PVR_2 = ObjectId("64c000000000000000000002")
@@ -31,6 +42,24 @@ SCREEN_NEXUS_1 = ObjectId("64c000000000000000000004")
 SCREEN_NEXUS_2 = ObjectId("64c000000000000000000005")
 SCREEN_CINEPOLIS_1 = ObjectId("64c000000000000000000006")
 SCREEN_ORION_1 = ObjectId("64c000000000000000000007")
+SCREEN_AMB_1 = ObjectId("64c000000000000000000008")
+SCREEN_AMB_2 = ObjectId("64c000000000000000000009")
+SCREEN_ICON_HYD_1 = ObjectId("64c00000000000000000000a")
+SCREEN_ICON_HYD_2 = ObjectId("64c00000000000000000000b")
+SCREEN_GVK_1 = ObjectId("64c00000000000000000000c")
+SCREEN_GVK_2 = ObjectId("64c00000000000000000000d")
+SCREEN_INFINITI_1 = ObjectId("64c00000000000000000000e")
+SCREEN_INFINITI_2 = ObjectId("64c00000000000000000000f")
+SCREEN_NARIMAN_1 = ObjectId("64c000000000000000000010")
+SCREEN_NARIMAN_2 = ObjectId("64c000000000000000000011")
+SCREEN_CINEPOLIS_MUM_1 = ObjectId("64c000000000000000000012")
+SCREEN_CINEPOLIS_MUM_2 = ObjectId("64c000000000000000000013")
+SCREEN_SAKET_1 = ObjectId("64c000000000000000000014")
+SCREEN_SAKET_2 = ObjectId("64c000000000000000000015")
+SCREEN_NEHRU_1 = ObjectId("64c000000000000000000016")
+SCREEN_NEHRU_2 = ObjectId("64c000000000000000000017")
+SCREEN_PRIYA_1 = ObjectId("64c000000000000000000018")
+SCREEN_PRIYA_2 = ObjectId("64c000000000000000000019")
 
 IMG = "https://image.tmdb.org/t/p"
 DEFAULT_PRICES = {
@@ -46,6 +75,15 @@ CINEMA_SCREENS = {
     CINEMA_NEXUS: [SCREEN_NEXUS_1, SCREEN_NEXUS_2],
     CINEMA_CINEPOLIS: [SCREEN_CINEPOLIS_1],
     CINEMA_ORION: [SCREEN_ORION_1],
+    CINEMA_AMB: [SCREEN_AMB_1, SCREEN_AMB_2],
+    CINEMA_ICON_HYD: [SCREEN_ICON_HYD_1, SCREEN_ICON_HYD_2],
+    CINEMA_GVK: [SCREEN_GVK_1, SCREEN_GVK_2],
+    CINEMA_INFINITI: [SCREEN_INFINITI_1, SCREEN_INFINITI_2],
+    CINEMA_NARIMAN: [SCREEN_NARIMAN_1, SCREEN_NARIMAN_2],
+    CINEMA_CINEPOLIS_MUM: [SCREEN_CINEPOLIS_MUM_1, SCREEN_CINEPOLIS_MUM_2],
+    CINEMA_SAKET: [SCREEN_SAKET_1, SCREEN_SAKET_2],
+    CINEMA_NEHRU: [SCREEN_NEHRU_1, SCREEN_NEHRU_2],
+    CINEMA_PRIYA: [SCREEN_PRIYA_1, SCREEN_PRIYA_2],
 }
 
 
@@ -102,22 +140,37 @@ def _end_time(start_time, duration_mins):
     return ended.strftime("%H:%M")
 
 
-def _show(show_id, movie_id, cinema_id, screen_id, show_date, start_time, duration_mins):
+def _show(
+    movie_id,
+    cinema_id,
+    screen_id,
+    city,
+    show_date,
+    start_time,
+    duration_mins,
+    language,
+    fmt,
+):
     return {
-        "_id": show_id,
+        "_id": _show_oid(screen_id, show_date, start_time),
         "movie_id": movie_id,
         "cinema_id": cinema_id,
         "screen_id": screen_id,
+        "city": city,
         "date": show_date.isoformat(),
         "start_time": start_time,
         "end_time": _end_time(start_time, duration_mins),
+        "language": language,
+        "format": fmt,
         "price_tiers": dict(DEFAULT_PRICES),
         "booked_seats": [],
     }
 
 
-def _show_oid(n):
-    return ObjectId("64d%021x" % n)
+def _show_oid(screen_id, show_date, start_time):
+    """Derive the id from the natural key so re-seeding never duplicates a slot."""
+    raw = "%s|%s|%s" % (screen_id, show_date.isoformat(), start_time)
+    return ObjectId(hashlib.md5(raw.encode()).hexdigest()[:24])
 
 
 def _person(name, role, photo):
@@ -142,6 +195,7 @@ def _movie(
     cast=None,
     crew=None,
     sort_order=10,
+    is_premiere=False,
 ):
     return {
         "_id": movie_id,
@@ -161,6 +215,7 @@ def _movie(
         "cast": cast or [],
         "crew": crew or [],
         "sort_order": sort_order,
+        "is_premiere": is_premiere,
         "is_active": True,
     }
 
@@ -241,6 +296,7 @@ MOVIES = [
         date(2024, 8, 15),
         7.6,
         128400,
+        is_premiere=True,
     ),
     _movie(
         MOVIE_JAWAN,
@@ -306,6 +362,7 @@ MOVIES = [
         date(2024, 6, 27),
         7.4,
         156800,
+        is_premiere=True,
     ),
     _movie(
         MOVIE_ANIMAL,
@@ -322,6 +379,7 @@ MOVIES = [
         date(2023, 12, 1),
         6.8,
         201500,
+        is_premiere=True,
     ),
     _movie(
         MOVIE_DUNE,
@@ -339,6 +397,7 @@ MOVIES = [
         date(2024, 3, 1),
         8.3,
         489000,
+        is_premiere=True,
     ),
     _movie(
         MOVIE_OPPENHEIMER,
@@ -371,6 +430,7 @@ MOVIES = [
         date(2024, 12, 5),
         7.5,
         274300,
+        is_premiere=True,
     ),
     _movie(
         MOVIE_FIGHTER,
@@ -387,6 +447,7 @@ MOVIES = [
         date(2024, 1, 25),
         6.9,
         87300,
+        is_premiere=True,
     ),
     _movie(
         MOVIE_INTERSTELLAR,
@@ -447,6 +508,78 @@ CINEMAS = [
         "amenities": ["M-Ticket", "Food & Beverage"],
         "screens": [SCREEN_ORION_1],
     },
+    {
+        "_id": CINEMA_AMB,
+        "name": "AMB Cinemas: Gachibowli",
+        "city": "Hyderabad",
+        "address": "Sattva Knowledge City, Gachibowli, Hyderabad",
+        "amenities": ["M-Ticket", "Food & Beverage"],
+        "screens": [SCREEN_AMB_1, SCREEN_AMB_2],
+    },
+    {
+        "_id": CINEMA_ICON_HYD,
+        "name": "PVR ICON: Hitech City",
+        "city": "Hyderabad",
+        "address": "Inorbit Mall, Madhapur, Hyderabad",
+        "amenities": ["M-Ticket", "Food & Beverage"],
+        "screens": [SCREEN_ICON_HYD_1, SCREEN_ICON_HYD_2],
+    },
+    {
+        "_id": CINEMA_GVK,
+        "name": "INOX: GVK One, Banjara Hills",
+        "city": "Hyderabad",
+        "address": "GVK One Mall, Banjara Hills, Hyderabad",
+        "amenities": ["M-Ticket"],
+        "screens": [SCREEN_GVK_1, SCREEN_GVK_2],
+    },
+    {
+        "_id": CINEMA_INFINITI,
+        "name": "PVR ICON: Infiniti Mall, Andheri West",
+        "city": "Mumbai",
+        "address": "Link Road, Andheri West, Mumbai",
+        "amenities": ["M-Ticket", "Food & Beverage"],
+        "screens": [SCREEN_INFINITI_1, SCREEN_INFINITI_2],
+    },
+    {
+        "_id": CINEMA_NARIMAN,
+        "name": "INOX: Nariman Point",
+        "city": "Mumbai",
+        "address": "Vinay Bhavya Complex, Nariman Point, Mumbai",
+        "amenities": ["M-Ticket"],
+        "screens": [SCREEN_NARIMAN_1, SCREEN_NARIMAN_2],
+    },
+    {
+        "_id": CINEMA_CINEPOLIS_MUM,
+        "name": "Cinepolis: Viviana Mall, Thane",
+        "city": "Mumbai",
+        "address": "Eastern Express Highway, Thane West, Mumbai",
+        "amenities": ["M-Ticket", "Food & Beverage"],
+        "screens": [SCREEN_CINEPOLIS_MUM_1, SCREEN_CINEPOLIS_MUM_2],
+    },
+    {
+        "_id": CINEMA_SAKET,
+        "name": "PVR: Select Citywalk, Saket",
+        "city": "Delhi-NCR",
+        "address": "Select Citywalk Mall, Saket, New Delhi",
+        "amenities": ["M-Ticket", "Food & Beverage"],
+        "screens": [SCREEN_SAKET_1, SCREEN_SAKET_2],
+    },
+    {
+        "_id": CINEMA_NEHRU,
+        "name": "INOX: Nehru Place",
+        "city": "Delhi-NCR",
+        "address": "Epicuria Mall, Nehru Place, New Delhi",
+        "amenities": ["M-Ticket"],
+        "screens": [SCREEN_NEHRU_1, SCREEN_NEHRU_2],
+    },
+    {
+        "_id": CINEMA_PRIYA,
+        "name": "PVR: Priya, Vasant Vihar",
+        "city": "Delhi-NCR",
+        "address": "Basant Lok Complex, Vasant Vihar, New Delhi",
+        "amenities": ["M-Ticket", "Food & Beverage"],
+        "screens": [SCREEN_PRIYA_1, SCREEN_PRIYA_2],
+    },
 ]
 
 SCREENS = [
@@ -492,12 +625,275 @@ SCREENS = [
         "name": "AUDI 1",
         "seat_layout": _compact_layout(),
     },
+    {
+        "_id": SCREEN_AMB_1,
+        "cinema_id": CINEMA_AMB,
+        "name": "AUDI 1",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_AMB_2,
+        "cinema_id": CINEMA_AMB,
+        "name": "AUDI 4",
+        "seat_layout": _compact_layout(),
+    },
+    {
+        "_id": SCREEN_ICON_HYD_1,
+        "cinema_id": CINEMA_ICON_HYD,
+        "name": "AUDI 2",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_ICON_HYD_2,
+        "cinema_id": CINEMA_ICON_HYD,
+        "name": "AUDI 5",
+        "seat_layout": _compact_layout(),
+    },
+    {
+        "_id": SCREEN_GVK_1,
+        "cinema_id": CINEMA_GVK,
+        "name": "Screen 1",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_GVK_2,
+        "cinema_id": CINEMA_GVK,
+        "name": "Screen 3",
+        "seat_layout": _compact_layout(),
+    },
+    {
+        "_id": SCREEN_INFINITI_1,
+        "cinema_id": CINEMA_INFINITI,
+        "name": "AUDI 1",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_INFINITI_2,
+        "cinema_id": CINEMA_INFINITI,
+        "name": "AUDI 3",
+        "seat_layout": _compact_layout(),
+    },
+    {
+        "_id": SCREEN_NARIMAN_1,
+        "cinema_id": CINEMA_NARIMAN,
+        "name": "Screen 1",
+        "seat_layout": _compact_layout(),
+    },
+    {
+        "_id": SCREEN_NARIMAN_2,
+        "cinema_id": CINEMA_NARIMAN,
+        "name": "Screen 2",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_CINEPOLIS_MUM_1,
+        "cinema_id": CINEMA_CINEPOLIS_MUM,
+        "name": "Screen 2",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_CINEPOLIS_MUM_2,
+        "cinema_id": CINEMA_CINEPOLIS_MUM,
+        "name": "Screen 6",
+        "seat_layout": _compact_layout(),
+    },
+    {
+        "_id": SCREEN_SAKET_1,
+        "cinema_id": CINEMA_SAKET,
+        "name": "AUDI 2",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_SAKET_2,
+        "cinema_id": CINEMA_SAKET,
+        "name": "AUDI 4",
+        "seat_layout": _compact_layout(),
+    },
+    {
+        "_id": SCREEN_NEHRU_1,
+        "cinema_id": CINEMA_NEHRU,
+        "name": "Screen 1",
+        "seat_layout": _compact_layout(),
+    },
+    {
+        "_id": SCREEN_NEHRU_2,
+        "cinema_id": CINEMA_NEHRU,
+        "name": "Screen 4",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_PRIYA_1,
+        "cinema_id": CINEMA_PRIYA,
+        "name": "AUDI 1",
+        "seat_layout": _hall_layout(),
+    },
+    {
+        "_id": SCREEN_PRIYA_2,
+        "cinema_id": CINEMA_PRIYA,
+        "name": "AUDI 3",
+        "seat_layout": _compact_layout(),
+    },
 ]
 
 
-def _build_shows():
-    durations = {movie["_id"]: movie["duration_mins"] for movie in MOVIES}
-    slots = [
+def _cinema_oid(name):
+    return ObjectId(hashlib.md5(("cinema|" + name).encode()).hexdigest()[:24])
+
+
+def _screen_oid(cinema_name, screen_name):
+    raw = "screen|%s|%s" % (cinema_name, screen_name)
+    return ObjectId(hashlib.md5(raw.encode()).hexdigest()[:24])
+
+
+TIME_SLOTS = [
+    ["10:15", "13:45", "18:00", "21:30"],
+    ["09:30", "12:45", "16:30", "20:15"],
+    ["11:00", "15:00", "19:00", "22:15"],
+    ["10:45", "14:15", "17:45", "21:00"],
+    ["12:15", "16:00", "19:45"],
+    ["09:45", "13:15", "17:15", "20:45"],
+]
+
+# Cities beyond the four hand-written ones above. Ids are derived from the name
+# so adding a city is a few lines of data instead of a batch of fresh ObjectIds.
+EXTRA_CITIES = [
+    {
+        "city": "Chennai",
+        "cinemas": [
+            ("PVR: Sathyam, Royapettah", "Thiru Vi Ka Road, Royapettah, Chennai", ["AUDI 1", "AUDI 3"]),
+            ("INOX: Phoenix Marketcity, Velachery", "Velachery Main Road, Chennai", ["Screen 2", "Screen 5"]),
+        ],
+        "movies": [MOVIE_VISHWANATH, MOVIE_KALKI, MOVIE_JAWAN, MOVIE_SPIDER, MOVIE_PUSHPA, MOVIE_DUNE],
+    },
+    {
+        "city": "Kolkata",
+        "cinemas": [
+            ("INOX: South City Mall", "Prince Anwar Shah Road, Kolkata", ["Screen 1", "Screen 4"]),
+            ("PVR: Mani Square", "Kankurgachi, Kolkata", ["AUDI 2", "AUDI 5"]),
+        ],
+        "movies": [MOVIE_VISHWANATH, MOVIE_STREE, MOVIE_ANIMAL, MOVIE_OPPENHEIMER, MOVIE_TWELFTH_FAIL, MOVIE_INTERSTELLAR],
+    },
+    {
+        "city": "Pune",
+        "cinemas": [
+            ("PVR: Phoenix Marketcity, Viman Nagar", "Viman Nagar, Pune", ["AUDI 1", "AUDI 4"]),
+            ("INOX: Bund Garden Road", "Bund Garden Road, Pune", ["Screen 2", "Screen 3"]),
+        ],
+        "movies": [MOVIE_VISHWANATH, MOVIE_STREE, MOVIE_FIGHTER, MOVIE_JAWAN, MOVIE_DUNE, MOVIE_ANIMAL],
+    },
+    {
+        "city": "Ahmedabad",
+        "cinemas": [
+            ("PVR: Acropolis Mall, Thaltej", "Thaltej, Ahmedabad", ["AUDI 2", "AUDI 6"]),
+            ("INOX: Ahmedabad One", "Vastrapur, Ahmedabad", ["Screen 1", "Screen 5"]),
+        ],
+        "movies": [MOVIE_VISHWANATH, MOVIE_STREE, MOVIE_ANIMAL, MOVIE_PUSHPA, MOVIE_FIGHTER, MOVIE_JAWAN],
+    },
+    {
+        "city": "Chandigarh",
+        "cinemas": [
+            ("PVR: Elante Mall", "Industrial Area Phase 1, Chandigarh", ["AUDI 1", "AUDI 3"]),
+            ("INOX: Piccadily Square", "Sector 34, Chandigarh", ["Screen 2", "Screen 4"]),
+        ],
+        "movies": [MOVIE_VISHWANATH, MOVIE_TWELFTH_FAIL, MOVIE_FIGHTER, MOVIE_ANIMAL, MOVIE_DUNE, MOVIE_OPPENHEIMER],
+    },
+    {
+        "city": "Kochi",
+        "cinemas": [
+            ("PVR: Lulu Mall, Edappally", "Lulu Mall, Edappally, Kochi", ["AUDI 3", "AUDI 7"]),
+            ("Cinepolis: Centre Square Mall", "MG Road, Kochi", ["Screen 1", "Screen 6"]),
+        ],
+        "movies": [MOVIE_VISHWANATH, MOVIE_KALKI, MOVIE_SPIDER, MOVIE_INTERSTELLAR, MOVIE_STREE, MOVIE_JAWAN],
+    },
+    {
+        "city": "Coimbatore",
+        "cinemas": [("INOX: Brookefields Mall", "Brookefields Mall, Coimbatore", ["Screen 1", "Screen 3"])],
+        "movies": [MOVIE_VISHWANATH, MOVIE_KALKI, MOVIE_JAWAN, MOVIE_SPIDER],
+    },
+    {
+        "city": "Indore",
+        "cinemas": [("PVR: Treasure Island Mall", "MG Road, Indore", ["AUDI 1", "AUDI 4"])],
+        "movies": [MOVIE_VISHWANATH, MOVIE_STREE, MOVIE_ANIMAL, MOVIE_FIGHTER],
+    },
+    {
+        "city": "Jaipur",
+        "cinemas": [("INOX: Crystal Palm Mall", "Ajmer Road, Jaipur", ["Screen 2", "Screen 5"])],
+        "movies": [MOVIE_VISHWANATH, MOVIE_JAWAN, MOVIE_ANIMAL, MOVIE_TWELFTH_FAIL],
+    },
+    {
+        "city": "Lucknow",
+        "cinemas": [("PVR: Phoenix Palassio", "Gomti Nagar, Lucknow", ["AUDI 2", "AUDI 6"])],
+        "movies": [MOVIE_VISHWANATH, MOVIE_STREE, MOVIE_FIGHTER, MOVIE_JAWAN],
+    },
+    {
+        "city": "Mysuru",
+        "cinemas": [("INOX: Mall of Mysore", "Indiranagar, Mysuru", ["Screen 1", "Screen 2"])],
+        "movies": [MOVIE_VISHWANATH, MOVIE_KALKI, MOVIE_STREE, MOVIE_DUNE],
+    },
+    {
+        "city": "Nagpur",
+        "cinemas": [("INOX: Empress City Mall", "Empress City, Nagpur", ["Screen 3", "Screen 4"])],
+        "movies": [MOVIE_VISHWANATH, MOVIE_ANIMAL, MOVIE_JAWAN, MOVIE_OPPENHEIMER],
+    },
+    {
+        "city": "Vadodara",
+        "cinemas": [("INOX: Race Course", "Race Course Circle, Vadodara", ["Screen 1", "Screen 5"])],
+        "movies": [MOVIE_VISHWANATH, MOVIE_STREE, MOVIE_PUSHPA, MOVIE_FIGHTER],
+    },
+    {
+        "city": "Visakhapatnam",
+        "cinemas": [("INOX: CMR Central", "Maddilapalem, Visakhapatnam", ["Screen 2", "Screen 4"])],
+        "movies": [MOVIE_VISHWANATH, MOVIE_KALKI, MOVIE_PUSHPA, MOVIE_SPIDER],
+    },
+]
+
+
+def _expand_extra_cities():
+    cinemas, screens, screens_by_cinema, plan = [], [], {}, {}
+    for entry in EXTRA_CITIES:
+        city = entry["city"]
+        cinema_ids = []
+        for cinema_name, address, screen_names in entry["cinemas"]:
+            cinema_id = _cinema_oid(cinema_name)
+            cinema_ids.append(cinema_id)
+            screen_ids = []
+            for index, screen_name in enumerate(screen_names):
+                screen_id = _screen_oid(cinema_name, screen_name)
+                screen_ids.append(screen_id)
+                screens.append(
+                    {
+                        "_id": screen_id,
+                        "cinema_id": cinema_id,
+                        "name": screen_name,
+                        "seat_layout": _hall_layout() if index % 2 == 0 else _compact_layout(),
+                    }
+                )
+            screens_by_cinema[cinema_id] = screen_ids
+            cinemas.append(
+                {
+                    "_id": cinema_id,
+                    "name": cinema_name,
+                    "city": city,
+                    "address": address,
+                    "amenities": ["M-Ticket", "Food & Beverage"],
+                    "screens": screen_ids,
+                }
+            )
+
+        slots = []
+        for index, movie_id in enumerate(entry["movies"]):
+            venues = [cinema_ids[index % len(cinema_ids)]]
+            if len(cinema_ids) > 1:
+                venues.append(cinema_ids[(index + 1) % len(cinema_ids)])
+            slots.append((movie_id, venues, TIME_SLOTS[index % len(TIME_SLOTS)]))
+        plan[city] = slots
+
+    return cinemas, screens, screens_by_cinema, plan
+
+
+# Which movies play where, per city. A city with no plan simply has no shows.
+CITY_SHOW_PLAN = {
+    "Bengaluru": [
         (MOVIE_VISHWANATH, [CINEMA_NEXUS, CINEMA_PVR, CINEMA_INOX, CINEMA_CINEPOLIS], ["10:15", "13:45", "18:00", "21:30"]),
         (MOVIE_AWARAPAN, [CINEMA_NEXUS, CINEMA_PVR, CINEMA_INOX, CINEMA_ORION], ["13:00", "16:15", "19:15", "22:15"]),
         (MOVIE_STREE, [CINEMA_PVR, CINEMA_INOX, CINEMA_CINEPOLIS], ["09:15", "12:15", "16:00", "21:00"]),
@@ -511,75 +907,188 @@ def _build_shows():
         (MOVIE_PUSHPA, [CINEMA_NEXUS, CINEMA_PVR, CINEMA_ORION], ["10:00", "14:15", "18:30", "22:00"]),
         (MOVIE_FIGHTER, [CINEMA_INOX, CINEMA_CINEPOLIS], ["09:45", "13:15", "17:00", "21:30"]),
         (MOVIE_INTERSTELLAR, [CINEMA_PVR, CINEMA_NEXUS], ["11:00", "16:00", "19:30"]),
-    ]
+    ],
+    "Hyderabad": [
+        (MOVIE_VISHWANATH, [CINEMA_AMB, CINEMA_ICON_HYD, CINEMA_GVK], ["10:15", "14:00", "18:30", "21:45"]),
+        (MOVIE_KALKI, [CINEMA_AMB, CINEMA_GVK], ["11:00", "15:30", "19:45"]),
+        (MOVIE_PUSHPA, [CINEMA_AMB, CINEMA_ICON_HYD, CINEMA_GVK], ["09:45", "13:30", "17:15", "21:00"]),
+        (MOVIE_STREE, [CINEMA_GVK, CINEMA_ICON_HYD], ["12:00", "16:00", "20:15"]),
+        (MOVIE_DUNE, [CINEMA_AMB, CINEMA_ICON_HYD], ["10:30", "14:45", "19:00"]),
+        (MOVIE_JAWAN, [CINEMA_ICON_HYD, CINEMA_GVK], ["11:30", "16:30", "20:45"]),
+        (MOVIE_SPIDER, [CINEMA_AMB, CINEMA_GVK], ["12:45", "17:45", "22:15"]),
+    ],
+    "Mumbai": [
+        (MOVIE_VISHWANATH, [CINEMA_INFINITI, CINEMA_CINEPOLIS_MUM], ["10:00", "13:45", "18:15", "21:30"]),
+        (MOVIE_ANIMAL, [CINEMA_INFINITI, CINEMA_NARIMAN], ["12:15", "16:45", "20:30"]),
+        (MOVIE_STREE, [CINEMA_INFINITI, CINEMA_NARIMAN, CINEMA_CINEPOLIS_MUM], ["09:30", "13:00", "17:30", "21:15"]),
+        (MOVIE_OPPENHEIMER, [CINEMA_NARIMAN, CINEMA_INFINITI], ["11:15", "15:45", "20:00"]),
+        (MOVIE_SPIDER, [CINEMA_CINEPOLIS_MUM, CINEMA_INFINITI], ["10:45", "14:30", "18:45"]),
+        (MOVIE_FIGHTER, [CINEMA_NARIMAN, CINEMA_CINEPOLIS_MUM], ["12:30", "17:00", "21:45"]),
+        (MOVIE_JAWAN, [CINEMA_CINEPOLIS_MUM, CINEMA_NARIMAN], ["11:45", "15:15", "19:15"]),
+    ],
+    "Delhi-NCR": [
+        (MOVIE_VISHWANATH, [CINEMA_SAKET, CINEMA_PRIYA], ["10:30", "14:15", "18:00", "22:00"]),
+        (MOVIE_TWELFTH_FAIL, [CINEMA_SAKET, CINEMA_NEHRU], ["11:00", "15:00", "19:30"]),
+        (MOVIE_ANIMAL, [CINEMA_SAKET, CINEMA_PRIYA], ["12:45", "17:15", "21:00"]),
+        (MOVIE_INTERSTELLAR, [CINEMA_NEHRU, CINEMA_SAKET], ["10:00", "15:15", "20:15"]),
+        (MOVIE_JAWAN, [CINEMA_PRIYA, CINEMA_NEHRU], ["11:45", "16:15", "20:45"]),
+        (MOVIE_DUNE, [CINEMA_SAKET, CINEMA_NEHRU], ["13:15", "18:30", "22:15"]),
+        (MOVIE_FIGHTER, [CINEMA_PRIYA, CINEMA_NEHRU], ["09:45", "14:45", "19:00"]),
+    ],
+}
 
+
+_EXTRA_CINEMAS, _EXTRA_SCREENS, _EXTRA_SCREENS_BY_CINEMA, _EXTRA_PLAN = _expand_extra_cities()
+CINEMAS.extend(_EXTRA_CINEMAS)
+SCREENS.extend(_EXTRA_SCREENS)
+CINEMA_SCREENS.update(_EXTRA_SCREENS_BY_CINEMA)
+CITY_SHOW_PLAN.update(_EXTRA_PLAN)
+
+
+def _language_format_combos(movie):
+    combos = []
+    for language, formats in (movie.get("language_formats") or {}).items():
+        for fmt in formats or ["2D"]:
+            combos.append((language, fmt))
+    if not combos:
+        combos.append((movie["language"][0], "2D"))
+    return combos
+
+
+def _build_shows():
+    movies = {movie["_id"]: movie for movie in MOVIES}
     shows = []
-    n = 1
     used = set()
     today = date.today()
     for day_offset in range(7):
         show_date = today + timedelta(days=day_offset)
         times_limit = 4 if day_offset < 3 else 2
-        for movie_id, cinema_ids, times in slots:
-            for cinema_id in cinema_ids:
-                screens = CINEMA_SCREENS[cinema_id]
-                for index, start in enumerate(times[:times_limit]):
-                    screen_id = None
-                    for offset in range(len(screens)):
-                        candidate = screens[(index + offset) % len(screens)]
-                        key = (candidate, show_date.isoformat(), start)
-                        if key not in used:
-                            screen_id = candidate
-                            used.add(key)
-                            break
-                    if screen_id is None:
-                        continue
-                    shows.append(
-                        _show(
-                            _show_oid(n),
-                            movie_id,
-                            cinema_id,
-                            screen_id,
-                            show_date,
-                            start,
-                            durations[movie_id],
+        for city, plan in CITY_SHOW_PLAN.items():
+            for movie_id, cinema_ids, times in plan:
+                movie = movies[movie_id]
+                combos = _language_format_combos(movie)
+                for cinema_index, cinema_id in enumerate(cinema_ids):
+                    screens = CINEMA_SCREENS[cinema_id]
+                    for index, start in enumerate(times[:times_limit]):
+                        screen_id = None
+                        for offset in range(len(screens)):
+                            candidate = screens[(index + offset) % len(screens)]
+                            key = (candidate, show_date.isoformat(), start)
+                            if key not in used:
+                                screen_id = candidate
+                                used.add(key)
+                                break
+                        if screen_id is None:
+                            continue
+                        # Spread a movie's languages/formats across its slots so
+                        # filtering by "Telugu 2D" narrows the list instead of
+                        # returning everything or nothing.
+                        language, fmt = combos[(cinema_index + index) % len(combos)]
+                        shows.append(
+                            _show(
+                                movie_id,
+                                cinema_id,
+                                screen_id,
+                                city,
+                                show_date,
+                                start,
+                                movie["duration_mins"],
+                                language,
+                                fmt,
+                            )
                         )
-                    )
-                    n += 1
     return shows
 
 
 async def _upsert_many(db, collection, docs):
-    for doc in docs:
-        payload = dict(doc)
-        doc_id = payload.pop("_id")
-        if collection == "shows":
-            payload.pop("booked_seats", None)
-            existing = await db[collection].find_one(
+    operations = [
+        UpdateOne(
+            {"_id": doc["_id"]},
+            {"$set": {key: value for key, value in doc.items() if key != "_id"}},
+            upsert=True,
+        )
+        for doc in docs
+    ]
+    if operations:
+        await db[collection].bulk_write(operations, ordered=False)
+
+
+async def _backfill_shows(db):
+    """Earlier seeds wrote shows with no city/language/format.
+
+    Those rows can be pinned in place by an existing booking, so fill the new
+    fields in rather than letting them drop out of every filtered listing.
+    """
+    stale = [doc async for doc in db.shows.find({"city": {"$exists": False}})]
+    if not stale:
+        return
+
+    cities = {doc["_id"]: doc.get("city") async for doc in db.cinemas.find({}, {"city": 1})}
+    defaults = {
+        movie["_id"]: _language_format_combos(movie)[0] for movie in MOVIES
+    }
+
+    operations = []
+    for doc in stale:
+        language, fmt = defaults.get(doc["movie_id"], ("Hindi", "2D"))
+        operations.append(
+            UpdateOne(
+                {"_id": doc["_id"]},
                 {
-                    "screen_id": payload["screen_id"],
-                    "date": payload["date"],
-                    "start_time": payload["start_time"],
-                }
+                    "$set": {
+                        "city": cities.get(doc["cinema_id"]) or "Bengaluru",
+                        "language": doc.get("language") or language,
+                        "format": doc.get("format") or fmt,
+                    }
+                },
             )
-            if existing is not None and existing["_id"] != doc_id:
-                continue
-            await db[collection].update_one(
-                {"_id": doc_id},
+        )
+    await db.shows.bulk_write(operations, ordered=False)
+
+
+async def _upsert_shows(db, docs):
+    wanted = [doc["_id"] for doc in docs]
+    dates = sorted({doc["date"] for doc in docs})
+
+    # Show ids are derived from (screen, date, time), so anything left over in
+    # the seeded window is stale. Drop it unless somebody has booked into it.
+    await db.shows.delete_many(
+        {"date": {"$in": dates}, "_id": {"$nin": wanted}, "booked_seats": {"$size": 0}}
+    )
+
+    taken = {
+        (doc["screen_id"], doc["date"], doc["start_time"]): doc["_id"]
+        async for doc in db.shows.find(
+            {"date": {"$in": dates}},
+            {"screen_id": 1, "date": 1, "start_time": 1},
+        )
+    }
+
+    operations = []
+    for doc in docs:
+        payload = {
+            key: value
+            for key, value in doc.items()
+            if key not in ("_id", "booked_seats")
+        }
+        owner = taken.get((doc["screen_id"], doc["date"], doc["start_time"]))
+        if owner is not None and owner != doc["_id"]:
+            continue
+        operations.append(
+            UpdateOne(
+                {"_id": doc["_id"]},
                 {"$set": payload, "$setOnInsert": {"booked_seats": []}},
                 upsert=True,
             )
-        else:
-            await db[collection].update_one(
-                {"_id": doc_id},
-                {"$set": payload},
-                upsert=True,
-            )
+        )
+    if operations:
+        await db.shows.bulk_write(operations, ordered=False)
 
 
 async def seed_if_empty(db: AsyncIOMotorDatabase) -> None:
     await _upsert_many(db, "movies", MOVIES)
     await _upsert_many(db, "cinemas", CINEMAS)
     await _upsert_many(db, "screens", SCREENS)
-    await _upsert_many(db, "shows", _build_shows())
+    await _backfill_shows(db)
+    await _upsert_shows(db, _build_shows())
     await db.shows.update_many({}, {"$set": {"price_tiers": dict(DEFAULT_PRICES)}})

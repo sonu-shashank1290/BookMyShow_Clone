@@ -15,10 +15,19 @@ router = APIRouter(prefix="/movies", tags=["movies"])
 async def list_movies(
     language: Optional[str] = Query(default=None),
     genre: Optional[str] = Query(default=None),
+    city: Optional[str] = Query(default=None),
+    premiere: Optional[bool] = Query(default=None),
     pagination: PaginationParams = Depends(pagination_params),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict:
-    return await service.list_movies(db, pagination, language=language, genre=genre)
+    return await service.list_movies(
+        db,
+        pagination,
+        language=language,
+        genre=genre,
+        city=city,
+        premiere=premiere,
+    )
 
 
 @router.get("/{movie_id}", response_model=MovieOut)
