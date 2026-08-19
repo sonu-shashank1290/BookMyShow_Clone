@@ -56,7 +56,8 @@ export function SeatMap({ showId }: { showId: string }) {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [seatCount, setSeatCount] = useState(qtyFromUrl ?? 1);
-  const [pickerOpen, setPickerOpen] = useState(qtyFromUrl === null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [countChosen, setCountChosen] = useState(qtyFromUrl !== null);
 
   async function refresh() {
     const nextShow = await getShow(showId);
@@ -77,9 +78,32 @@ export function SeatMap({ showId }: { showId: string }) {
   }, [ready, showId, token]);
 
   useEffect(() => {
+    setCountChosen(readQty(searchParams.get("qty")) !== null);
+    setPickerOpen(false);
+    // Re-decide the ticket-count modal whenever the show (or qty) changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showId]);
+
+  useEffect(() => {
+    if (!map || countChosen) return;
+    const held = map.rows.flatMap((row) =>
+      row.seats.filter((seat) => seat.locked_by_me).map((seat) => seat.id),
+    );
+    if (held.length > 0) {
+      setSeatCount(held.length);
+      setCountChosen(true);
+      setPickerOpen(false);
+      router.replace(`/booking/${showId}/seats?qty=${held.length}`, { scroll: false });
+      return;
+    }
+    setPickerOpen(true);
+  }, [map, countChosen]);
+
+  useEffect(() => {
     if (qtyFromUrl === null) return;
     setSeatCount(qtyFromUrl);
     setPickerOpen(false);
+    setCountChosen(true);
   }, [qtyFromUrl]);
 
   const mine = useMemo(() => {
@@ -118,9 +142,13 @@ export function SeatMap({ showId }: { showId: string }) {
   }
 
   async function onConfirmCount() {
+    const previous = mine.length;
     setPickerOpen(false);
+    setCountChosen(true);
     await persistCount(seatCount);
-    if (mine.length > 0) {
+    // Drop the hold only when the ticket count actually changed.
+    // Confirming the same number (or reopening the show) must keep the lock.
+    if (previous > 0 && previous !== seatCount) {
       await unlockAll(mine);
       await refresh().catch(() => undefined);
     }
