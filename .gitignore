@@ -30,3 +30,6 @@ dist/
 # Local MongoDB
 .tools/
 .data/
+
+# Personal study notes
+LEARN.md
