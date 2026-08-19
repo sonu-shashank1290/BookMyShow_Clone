@@ -15,11 +15,14 @@ class BookingOut(BaseModel):
     seats: List[str]
     amount: int
     status: str
+    ticket_code: Optional[str] = None
     payment_id: Optional[str] = None
     created_at: Optional[str] = None
     movie_title: Optional[str] = None
     movie_rating: Optional[str] = None
     languages: Optional[List[str]] = None
+    language: Optional[str] = None
+    format: Optional[str] = None
     cinema_name: Optional[str] = None
     cinema_address: Optional[str] = None
     screen_name: Optional[str] = None

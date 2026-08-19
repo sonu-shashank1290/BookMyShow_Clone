@@ -3,10 +3,11 @@ from typing import List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from app.common.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.common.utils import to_object_id
-from app.features.booking.models import booking_public, new_booking_doc
+from app.features.booking.models import booking_public, new_booking_doc, new_ticket_code
 from app.features.seats import locks
 from app.features.seats.service import _screen_for_show
 from app.features.shows.service import get_show
@@ -19,6 +20,8 @@ async def _booking_extras(db: AsyncIOMotorDatabase, booking: dict) -> dict:
         return extras
     extras["show_date"] = show.get("date")
     extras["start_time"] = show.get("start_time")
+    extras["language"] = show.get("language")
+    extras["format"] = show.get("format")
     movie = await db.movies.find_one({"_id": show["movie_id"]})
     cinema = await db.cinemas.find_one({"_id": show["cinema_id"]})
     screen = await db.screens.find_one({"_id": show["screen_id"]})
@@ -35,8 +38,29 @@ async def _booking_extras(db: AsyncIOMotorDatabase, booking: dict) -> dict:
 
 
 async def booking_detail(db: AsyncIOMotorDatabase, booking: dict) -> dict:
+    if booking.get("status") == "confirmed" and not booking.get("ticket_code"):
+        booking = await _ensure_ticket_code(db, booking)
     extras = await _booking_extras(db, booking)
     return booking_public(booking, extras)
+
+
+async def _ensure_ticket_code(db: AsyncIOMotorDatabase, booking: dict) -> dict:
+    """Old confirmed bookings predate ticket_code; mint one the first time they are read."""
+    for _ in range(5):
+        code = new_ticket_code()
+        try:
+            updated = await db.bookings.find_one_and_update(
+                {"_id": booking["_id"], "ticket_code": {"$exists": False}},
+                {"$set": {"ticket_code": code}},
+                return_document=ReturnDocument.AFTER,
+            )
+        except DuplicateKeyError:
+            continue
+        if updated is not None:
+            return updated
+        latest = await db.bookings.find_one({"_id": booking["_id"]})
+        return latest or booking
+    return booking
 
 
 def _seat_tier(layout, seat_id):
@@ -120,11 +144,33 @@ async def confirm_booking(
         locks.release_many(show_id, seats, user_id)
         raise ConflictError("One or more seats were booked by someone else")
 
-    updated = await db.bookings.find_one_and_update(
-        {"_id": booking["_id"], "status": "pending"},
-        {"$set": {"status": "confirmed", "payment_id": payment_id}},
-        return_document=ReturnDocument.AFTER,
-    )
+    updated = None
+    for _ in range(5):
+        try:
+            updated = await db.bookings.find_one_and_update(
+                {"_id": booking["_id"], "status": "pending"},
+                {
+                    "$set": {
+                        "status": "confirmed",
+                        "payment_id": payment_id,
+                        "ticket_code": new_ticket_code(),
+                    }
+                },
+                return_document=ReturnDocument.AFTER,
+            )
+            break
+        except DuplicateKeyError:
+            continue
+    if updated is None:
+        # Unique-code collision is vanishingly rare; fall back without a code
+        # and let booking_detail mint one on read.
+        updated = await db.bookings.find_one_and_update(
+            {"_id": booking["_id"], "status": "pending"},
+            {"$set": {"status": "confirmed", "payment_id": payment_id}},
+            return_document=ReturnDocument.AFTER,
+        )
+    if updated is None:
+        raise ConflictError("Booking is not pending")
     locks.release_many(show_id, seats, user_id)
     return await booking_detail(db, updated)
 

@@ -5,7 +5,10 @@ export type Booking = {
   seats: string[];
   amount: number;
   status: string;
+  ticket_code?: string | null;
   payment_id?: string | null;
+  language?: string | null;
+  format?: string | null;
   created_at?: string | null;
   movie_title?: string | null;
   movie_rating?: string | null;

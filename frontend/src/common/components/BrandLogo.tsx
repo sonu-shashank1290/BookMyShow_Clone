@@ -5,7 +5,7 @@ export function BrandLogo({
   size = "md",
   invert = false,
 }: {
-  href?: string;
+  href?: string | null;
   size?: "sm" | "md" | "lg";
   invert?: boolean;
 }) {

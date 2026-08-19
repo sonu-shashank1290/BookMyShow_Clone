@@ -45,6 +45,7 @@ Movie ──< Show >── Screen ──< Cinema
 - Atomic seat confirmation — a concurrent payment for the same seat is rejected, not
   silently double-booked
 - JWT auth (bcrypt passwords), booking history, mock payment with success/failure paths
+- **M-Ticket** after a successful payment: unique `BMS-` booking ID plus a QR code the cinema could scan
 
 ---
 

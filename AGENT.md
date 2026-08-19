@@ -272,7 +272,9 @@ running multiple workers would not share them. See section 10.
    ```
 
    `None` means a concurrent confirmation won → booking `cancelled`. Otherwise booking →
-   `confirmed`, `payment_id` attached, locks released.
+   `confirmed`, a unique `ticket_code` (`BMS-XXXXXXXX`) is minted, `payment_id` attached,
+   locks released. The confirmation page renders that as an M-Ticket with a QR encoding
+   `{ code, booking_id, show_id, seats }`.
 4. On failure: payment `failed`, booking `cancelled`, locks released, seats free again.
 5. `DELETE /bookings/{booking_id}` discards a **pending** booking (payment-page back button)
    and releases its locks.

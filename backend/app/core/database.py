@@ -47,3 +47,5 @@ async def ensure_indexes() -> None:
     await db.cinemas.create_index("city")
     await db.movies.create_index("language")
     await db.movies.create_index("genre")
+    # Sparse: pending bookings have no code yet.
+    await db.bookings.create_index("ticket_code", unique=True, sparse=True)
