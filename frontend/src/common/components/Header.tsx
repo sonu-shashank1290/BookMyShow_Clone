@@ -53,12 +53,17 @@ export function Header() {
               </button>
             </>
           ) : (
-            <Link
-              href="/login"
-              className="rounded bg-[#f84464] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#e03858]"
-            >
-              Sign in
-            </Link>
+            <>
+              <Link href="/signup" className="text-[#333] hover:text-[#f84464]">
+                Sign up
+              </Link>
+              <Link
+                href="/login"
+                className="rounded bg-[#f84464] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#e03858]"
+              >
+                Sign in
+              </Link>
+            </>
           )}
           <DummyLink className="text-[#333]">
             <MenuIcon />

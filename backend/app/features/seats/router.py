@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -25,14 +25,18 @@ async def lock_seat(
     db: AsyncIOMotorDatabase = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    return await service.lock_seat(db, body.show_id, body.seat_id, user_id)
+    return await service.lock_seats(db, body.show_id, body.seats(), user_id)
 
 
 @router.delete("/seats/lock")
 async def unlock_seat(
     show_id: str = Query(...),
-    seat_id: str = Query(...),
+    seat_id: Optional[str] = Query(default=None),
+    seat_ids: List[str] = Query(default=[]),
     db: AsyncIOMotorDatabase = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    return await service.unlock_seat(db, show_id, seat_id, user_id)
+    ids = list(seat_ids)
+    if seat_id:
+        ids.append(seat_id)
+    return await service.unlock_seats(db, show_id, ids, user_id)

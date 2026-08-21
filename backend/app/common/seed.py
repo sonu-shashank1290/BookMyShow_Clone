@@ -63,10 +63,10 @@ SCREEN_PRIYA_2 = ObjectId("64c000000000000000000019")
 
 IMG = "https://image.tmdb.org/t/p"
 DEFAULT_PRICES = {
-    "classic_plus": 199,
-    "classic": 199,
-    "prime": 199,
-    "recliner": 399,
+    "classic_plus": 170,
+    "classic": 210,
+    "prime": 280,
+    "recliner": 450,
 }
 
 CINEMA_SCREENS = {
@@ -101,37 +101,63 @@ def _backdrop(path):
     return _img(path, "w1280")
 
 
-def _row(letter, tier, count):
+def _row(letter, tier, start, end=None):
+    if end is None:
+        end = start
+        start = 1
     return {
         "row": letter,
         "tier": tier,
-        "seats": ["%s%s" % (letter, i) for i in range(1, count + 1)],
+        "seats": ["%s%s" % (letter, i) for i in range(start, end + 1)],
     }
 
 
 def _hall_layout():
-    rows = []
-    for letter in "AB":
-        rows.append(_row(letter, "classic_plus", 12))
-    for letter in "CDE":
-        rows.append(_row(letter, "classic", 12))
-    for letter in "FGHJK":
-        rows.append(_row(letter, "prime", 12))
-    rows.append(_row("L", "recliner", 8))
-    return {"rows": rows}
+    # Amphitheatre: missing edge seats so rows indent (BMS "half-cut" grid).
+    # Seat numbers stay aligned in columns; aisle after 8.
+    return {
+        "rows": [
+            _row("L", "recliner", 6, 15),
+            _row("K", "prime", 3, 18),
+            _row("J", "prime", 2, 19),
+            _row("H", "prime", 1, 20),
+            _row("G", "prime", 1, 20),
+            _row("F", "prime", 1, 20),
+            _row("E", "classic", 1, 20),
+            _row("D", "classic", 1, 20),
+            _row("C", "classic", 2, 19),
+            _row("B", "classic_plus", 3, 18),
+            _row("A", "classic_plus", 5, 16),
+        ]
+    }
 
 
 def _compact_layout():
     return {
         "rows": [
-            _row("A", "classic_plus", 8),
-            _row("B", "classic", 10),
-            _row("C", "classic", 10),
-            _row("D", "prime", 10),
-            _row("E", "prime", 10),
-            _row("F", "recliner", 6),
+            _row("F", "recliner", 5, 12),
+            _row("E", "prime", 2, 15),
+            _row("D", "prime", 1, 16),
+            _row("C", "classic", 1, 16),
+            _row("B", "classic", 2, 15),
+            _row("A", "classic_plus", 4, 13),
         ]
     }
+
+
+def _demo_booked(layout):
+    """Leave realistic gaps so large ticket counts shrink to the pocket size."""
+    booked = []
+    for row in layout.get("rows") or []:
+        seats = row.get("seats") or []
+        tier = row.get("tier")
+        count = len(seats)
+        if tier == "classic" and count >= 8:
+            booked.extend(seats[-4:])
+        elif tier == "prime" and count >= 6:
+            mid = count // 2
+            booked.extend(seats[mid - 1 : mid + 1])
+    return booked
 
 
 def _end_time(start_time, duration_mins):
@@ -1085,6 +1111,26 @@ async def _upsert_shows(db, docs):
         await db.shows.bulk_write(operations, ordered=False)
 
 
+async def _seed_demo_occupancy(db: AsyncIOMotorDatabase) -> None:
+    screens = {doc["_id"]: doc async for doc in db.screens.find({}, {"seat_layout": 1})}
+    operations = []
+    async for show in db.shows.find({"booked_seats": {"$size": 0}}, {"screen_id": 1}):
+        screen = screens.get(show["screen_id"])
+        if screen is None:
+            continue
+        booked = _demo_booked(screen.get("seat_layout") or {})
+        if not booked:
+            continue
+        operations.append(
+            UpdateOne(
+                {"_id": show["_id"], "booked_seats": {"$size": 0}},
+                {"$set": {"booked_seats": booked}},
+            )
+        )
+    if operations:
+        await db.shows.bulk_write(operations, ordered=False)
+
+
 async def seed_if_empty(db: AsyncIOMotorDatabase) -> None:
     await _upsert_many(db, "movies", MOVIES)
     await _upsert_many(db, "cinemas", CINEMAS)
@@ -1092,3 +1138,4 @@ async def seed_if_empty(db: AsyncIOMotorDatabase) -> None:
     await _backfill_shows(db)
     await _upsert_shows(db, _build_shows())
     await db.shows.update_many({}, {"$set": {"price_tiers": dict(DEFAULT_PRICES)}})
+    await _seed_demo_occupancy(db)

@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import List, Optional
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.common.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.common.utils import to_object_id
 from app.features.seats import locks
+from app.features.seats.show_queue import submit as enqueue_show
 from app.features.shows.service import get_show
 
 
@@ -28,7 +29,7 @@ async def get_seat_map(
     show = await get_show(db, show_id)
     screen = await _screen_for_show(db, show)
     booked = set(show.get("booked_seats") or [])
-    active_locks = locks.locks_for_show(show_id)
+    active_locks = await locks.locks_for_show(db, show_id)
 
     rows = []
     for row in screen.get("seat_layout", {}).get("rows", []):
@@ -56,31 +57,46 @@ async def get_seat_map(
     }
 
 
-async def lock_seat(
-    db: AsyncIOMotorDatabase, show_id: str, seat_id: str, user_id: str
+async def lock_seats(
+    db: AsyncIOMotorDatabase, show_id: str, seat_ids: List[str], user_id: str
 ) -> dict:
-    show = await get_show(db, show_id)
-    screen = await _screen_for_show(db, show)
-    if seat_id not in _seat_ids(screen.get("seat_layout", {})):
-        raise BadRequestError("Seat does not exist on this screen")
-    if seat_id in (show.get("booked_seats") or []):
-        raise ConflictError("Seat already booked")
+    async def _lock():
+        seat_ids_unique = list(dict.fromkeys(seat_ids))
+        if not seat_ids_unique:
+            raise BadRequestError("No seats to lock")
+        show = await get_show(db, show_id)
+        screen = await _screen_for_show(db, show)
+        layout_ids = _seat_ids(screen.get("seat_layout", {}))
+        if any(seat_id not in layout_ids for seat_id in seat_ids_unique):
+            raise BadRequestError("Seat does not exist on this screen")
+        booked = set(show.get("booked_seats") or [])
+        if any(seat_id in booked for seat_id in seat_ids_unique):
+            raise ConflictError("Seat already booked")
 
-    item = locks.acquire(show_id, seat_id, user_id)
-    if item is None:
-        raise ConflictError("Seat is locked by another user")
-    return {
-        "show_id": show_id,
-        "seat_id": seat_id,
-        "status": "locked",
-        "expires_in": locks.TTL_SECONDS,
-    }
+        taken = await locks.acquire_many(db, show_id, seat_ids_unique, user_id)
+        if taken is None:
+            raise ConflictError("One or more seats are locked by another user")
+        return {
+            "show_id": show_id,
+            "seat_ids": taken,
+            "status": "locked",
+            "expires_in": locks.TTL_SECONDS,
+        }
+
+    return await enqueue_show(show_id, _lock)
 
 
-async def unlock_seat(
-    db: AsyncIOMotorDatabase, show_id: str, seat_id: str, user_id: str
+async def unlock_seats(
+    db: AsyncIOMotorDatabase, show_id: str, seat_ids: List[str], user_id: str
 ) -> dict:
-    await get_show(db, show_id)
-    if not locks.release(show_id, seat_id, user_id):
-        raise ForbiddenError("You do not hold this seat lock")
-    return {"show_id": show_id, "seat_id": seat_id, "status": "available"}
+    async def _unlock():
+        await get_show(db, show_id)
+        unique = list(dict.fromkeys(seat_ids))
+        if not unique:
+            raise BadRequestError("No seats to unlock")
+        for seat_id in unique:
+            if not await locks.release(db, show_id, seat_id, user_id):
+                raise ForbiddenError("You do not hold this seat lock")
+        return {"show_id": show_id, "seat_ids": unique, "status": "available"}
+
+    return await enqueue_show(show_id, _unlock)

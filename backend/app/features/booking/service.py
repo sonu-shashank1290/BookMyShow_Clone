@@ -9,6 +9,7 @@ from app.common.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.common.utils import to_object_id
 from app.features.booking.models import booking_public, new_booking_doc, new_ticket_code
 from app.features.seats import locks
+from app.features.seats.show_queue import submit as enqueue_show
 from app.features.seats.service import _screen_for_show
 from app.features.shows.service import get_show
 
@@ -84,20 +85,23 @@ def _amount_for_seats(show, layout, seats: List[str]) -> int:
 async def create_booking(
     db: AsyncIOMotorDatabase, user_id: str, show_id: str, seats: List[str]
 ) -> dict:
-    seats = list(dict.fromkeys(seats))
-    show = await get_show(db, show_id)
-    screen = await _screen_for_show(db, show)
-    booked = set(show.get("booked_seats") or [])
-    if any(seat in booked for seat in seats):
-        raise ConflictError("One or more seats are already booked")
-    if not locks.all_owned(show_id, seats, user_id):
-        raise ConflictError("All seats must be locked by you before booking")
+    async def _create():
+        unique = list(dict.fromkeys(seats))
+        show = await get_show(db, show_id)
+        screen = await _screen_for_show(db, show)
+        booked = set(show.get("booked_seats") or [])
+        if any(seat in booked for seat in unique):
+            raise ConflictError("One or more seats are already booked")
+        if not await locks.all_owned(db, show_id, unique, user_id):
+            raise ConflictError("All seats must be locked by you before booking")
 
-    amount = _amount_for_seats(show, screen.get("seat_layout", {}), seats)
-    doc = new_booking_doc(to_object_id(user_id), to_object_id(show_id), seats, amount)
-    result = await db.bookings.insert_one(doc)
-    doc["_id"] = result.inserted_id
-    return await booking_detail(db, doc)
+        amount = _amount_for_seats(show, screen.get("seat_layout", {}), unique)
+        doc = new_booking_doc(to_object_id(user_id), to_object_id(show_id), unique, amount)
+        result = await db.bookings.insert_one(doc)
+        doc["_id"] = result.inserted_id
+        return await booking_detail(db, doc)
+
+    return await enqueue_show(show_id, _create)
 
 
 async def list_my_bookings(db: AsyncIOMotorDatabase, user_id: str) -> dict:
@@ -124,55 +128,57 @@ async def confirm_booking(
     db: AsyncIOMotorDatabase, booking: dict, payment_id: ObjectId
 ) -> dict:
     show_id = str(booking["show_id"])
-    seats = booking["seats"]
-    user_id = str(booking["user_id"])
-    if not locks.all_owned(show_id, seats, user_id):
-        await db.bookings.update_one(
-            {"_id": booking["_id"]}, {"$set": {"status": "expired"}}
-        )
-        raise ConflictError("Seat locks expired; booking cannot be confirmed")
 
-    updated_show = await db.shows.find_one_and_update(
-        {"_id": booking["show_id"], "booked_seats": {"$nin": seats}},
-        {"$addToSet": {"booked_seats": {"$each": seats}}},
-        return_document=ReturnDocument.AFTER,
-    )
-    if updated_show is None:
-        await db.bookings.update_one(
-            {"_id": booking["_id"]}, {"$set": {"status": "cancelled"}}
-        )
-        locks.release_many(show_id, seats, user_id)
-        raise ConflictError("One or more seats were booked by someone else")
-
-    updated = None
-    for _ in range(5):
-        try:
-            updated = await db.bookings.find_one_and_update(
-                {"_id": booking["_id"], "status": "pending"},
-                {
-                    "$set": {
-                        "status": "confirmed",
-                        "payment_id": payment_id,
-                        "ticket_code": new_ticket_code(),
-                    }
-                },
-                return_document=ReturnDocument.AFTER,
+    async def _confirm():
+        seats = booking["seats"]
+        user_id = str(booking["user_id"])
+        if not await locks.all_owned(db, show_id, seats, user_id):
+            await db.bookings.update_one(
+                {"_id": booking["_id"]}, {"$set": {"status": "expired"}}
             )
-            break
-        except DuplicateKeyError:
-            continue
-    if updated is None:
-        # Unique-code collision is vanishingly rare; fall back without a code
-        # and let booking_detail mint one on read.
-        updated = await db.bookings.find_one_and_update(
-            {"_id": booking["_id"], "status": "pending"},
-            {"$set": {"status": "confirmed", "payment_id": payment_id}},
+            raise ConflictError("Seat locks expired; booking cannot be confirmed")
+
+        updated_show = await db.shows.find_one_and_update(
+            {"_id": booking["show_id"], "booked_seats": {"$nin": seats}},
+            {"$addToSet": {"booked_seats": {"$each": seats}}},
             return_document=ReturnDocument.AFTER,
         )
-    if updated is None:
-        raise ConflictError("Booking is not pending")
-    locks.release_many(show_id, seats, user_id)
-    return await booking_detail(db, updated)
+        if updated_show is None:
+            await db.bookings.update_one(
+                {"_id": booking["_id"]}, {"$set": {"status": "cancelled"}}
+            )
+            await locks.release_many(db, show_id, seats, user_id)
+            raise ConflictError("One or more seats were booked by someone else")
+
+        updated = None
+        for _ in range(5):
+            try:
+                updated = await db.bookings.find_one_and_update(
+                    {"_id": booking["_id"], "status": "pending"},
+                    {
+                        "$set": {
+                            "status": "confirmed",
+                            "payment_id": payment_id,
+                            "ticket_code": new_ticket_code(),
+                        }
+                    },
+                    return_document=ReturnDocument.AFTER,
+                )
+                break
+            except DuplicateKeyError:
+                continue
+        if updated is None:
+            updated = await db.bookings.find_one_and_update(
+                {"_id": booking["_id"], "status": "pending"},
+                {"$set": {"status": "confirmed", "payment_id": payment_id}},
+                return_document=ReturnDocument.AFTER,
+            )
+        if updated is None:
+            raise ConflictError("Booking is not pending")
+        await locks.release_many(db, show_id, seats, user_id)
+        return await booking_detail(db, updated)
+
+    return await enqueue_show(show_id, _confirm)
 
 
 async def cancel_pending_booking(
@@ -182,7 +188,7 @@ async def cancel_pending_booking(
     if booking["status"] != "pending":
         raise ConflictError("Only a pending booking can be discarded")
     show_id = str(booking["show_id"])
-    locks.release_many(show_id, booking["seats"], user_id)
+    await locks.release_many(db, show_id, booking["seats"], user_id)
     await db.bookings.delete_one({"_id": booking["_id"], "status": "pending"})
     return {"deleted": True, "show_id": show_id}
 
@@ -193,5 +199,5 @@ async def fail_booking(db: AsyncIOMotorDatabase, booking: dict) -> dict:
         {"$set": {"status": "cancelled"}},
         return_document=ReturnDocument.AFTER,
     )
-    locks.release_many(str(booking["show_id"]), booking["seats"], str(booking["user_id"]))
+    await locks.release_many(db, str(booking["show_id"]), booking["seats"], str(booking["user_id"]))
     return await booking_detail(db, updated or booking)

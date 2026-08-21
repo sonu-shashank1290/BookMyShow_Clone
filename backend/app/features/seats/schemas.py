@@ -1,6 +1,6 @@
-from typing import List
+from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SeatOut(BaseModel):
@@ -23,11 +23,24 @@ class SeatMapOut(BaseModel):
 
 class SeatLockRequest(BaseModel):
     show_id: str
-    seat_id: str = Field(min_length=1, max_length=8)
+    seat_id: Optional[str] = Field(default=None, min_length=1, max_length=8)
+    seat_ids: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_seats(self):
+        if not self.seat_ids and not self.seat_id:
+            raise ValueError("seat_id or seat_ids is required")
+        return self
+
+    def seats(self) -> List[str]:
+        ids = list(self.seat_ids)
+        if self.seat_id:
+            ids.append(self.seat_id)
+        return list(dict.fromkeys(ids))
 
 
 class SeatLockOut(BaseModel):
     show_id: str
-    seat_id: str
+    seat_ids: List[str]
     status: str
     expires_in: int
